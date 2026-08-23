@@ -63,12 +63,30 @@ def copy_file(src: Path, dst: Path) -> str:
     return dst.name
 
 
-def export_note(row: sqlite3.Row, extra: dict[str, sqlite3.Row], local_state: Path, out_dir: Path) -> dict:
+def unique_folder(out_dir: Path, base_name: str) -> Path:
+    folder = out_dir / base_name
+    if not folder.exists():
+        return folder
+    for number in range(2, 10000):
+        folder = out_dir / clean_name(f"{base_name} {number}", base_name)
+        if not folder.exists():
+            return folder
+    raise RuntimeError(f"too many duplicate note folder names for {base_name!r}")
+
+
+def export_note(
+    row: sqlite3.Row,
+    extra: dict[str, sqlite3.Row],
+    local_state: Path,
+    out_dir: Path,
+    no_uuid_folders: bool,
+) -> dict:
     uuid = row["UUID"]
     title = row["Title"] or row["RecommendedTitle"] or row["StrippedTitle"] or ""
     text = best_text(row)
     day = ms_to_day(row["LastModifiedAt"] or row["CreatedAt"])
-    folder = out_dir / clean_name(f"{uuid} {day} {title}", uuid)
+    folder_name = clean_name(f"{day} {title}", uuid) if no_uuid_folders else clean_name(f"{uuid} {day} {title}", uuid)
+    folder = unique_folder(out_dir, folder_name)
     assets = folder / "assets"
     folder.mkdir(parents=True, exist_ok=True)
 
@@ -107,14 +125,7 @@ def export_note(row: sqlite3.Row, extra: dict[str, sqlite3.Row], local_state: Pa
         "thumbnails": thumb_files,
     }
 
-    lines = [
-        "---",
-        json.dumps(meta, ensure_ascii=False, indent=2),
-        "---",
-        "",
-        f"# {title or uuid}",
-        "",
-    ]
+    lines = [f"# {title or uuid}", ""]
     if text:
         lines.extend([text, ""])
     for media in media_files:
@@ -132,6 +143,7 @@ def main() -> None:
     parser.add_argument("local_state", type=Path, help="Path to Samsung Notes LocalState directory")
     parser.add_argument("-o", "--out", type=Path, default=Path("exported_notes"), help="Output directory")
     parser.add_argument("--include-deleted", action="store_true", help="Export deleted notes too")
+    parser.add_argument("--no-uuid-folders", action="store_true", help="Use date/title folder names without note UUIDs")
     args = parser.parse_args()
 
     db = args.local_state / "Storage.sqlite"
@@ -147,7 +159,7 @@ def main() -> None:
     rows = con.execute(f"select * from NoteDB {where} order by LastModifiedAt desc, Id desc").fetchall()
 
     args.out.mkdir(parents=True, exist_ok=True)
-    index = [export_note(row, extra, args.local_state, args.out) for row in rows]
+    index = [export_note(row, extra, args.local_state, args.out, args.no_uuid_folders) for row in rows]
     (args.out / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"exported {len(index)} notes to {args.out}")
 
