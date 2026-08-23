@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+
+# Personal Samsung Notes app data.
+SAMSUNGELECTRONICSCoLtd.SamsungNotes_*/
+**/Storage.sqlite
+**/Storage.sqlite-shm
+**/Storage.sqlite-wal
+**/wdoc/
+**/Thumbnail/
+
+# Export output.
+exported_notes/
+samsung_notes_export*/
+__pycache__
